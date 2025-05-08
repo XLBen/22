@@ -1,94 +1,183 @@
-//R0 (dividend)
-//R1 (divisor)
-//R2 (quotient)
-//R3 (remainder)
-//R4 (error flag: 0=normal, 1=division by zero error)
-// Registers used: R5 (dividend sign flag), R6 (divisor sign flag), ABS_R0 (dividend absolute value), ABS_R1 (divisor absolute value)
-
-@R1 // Load divisor
-D=M // Store divisor in D register
-@DIVIDE_BY_ZERO // Prepare to handle division by zero error
-D;JEQ // If divisor is 0, jump to error handling
-
-@R0 // Load dividend
+(INTEGER_DIVISION)
+// Check 0
+@R1 // Load the divisor to the D register
 D=M
-@R5 // Initialize dividend sign flag
-M=0 // Default is positive
-@SKIP_R0_NEG // Prepare to skip negative number processing
-D;JGE // Skip if dividend ≥ 0
-@R5 // Handle negative dividend
-M=1 // Set to negative
-(SKIP_R0_NEG) // Negative number processing completed
-@R0 // Reload dividend
-D=M
-@ABS_R0 // Prepare to store absolute value
-M=D // Store original value first
-@SKIP_R0_ABS // Prepare to skip absolute value conversion
-D;JGE // Skip if already positive
-@ABS_R0 // Convert to absolute value
-M=-D // Negate negative number
-(SKIP_R0_ABS) // Absolute value conversion completed
+@INVALID_DIVISION // If the divisor is 0, jump to error handling
+D;JEQ
 
-@R1 // Load divisor
-D=M
-@R6 // Initialize divisor sign flag
-M=0 // Set to positive by default
-@SKIP_R1_NEG // Prepare to skip negative number processing
-D;JGE // Skip if divisor ≥ 0
-@R6 // Process negative divisor
-M=1 // Set to negative
-(SKIP_R1_NEG) // Negative number processing completed
-@R1 // Reload divisor
-D=M
-@ABS_R1 // Prepare to store absolute value
-M=D // Store original value first
-@SKIP_R1_ABS // Prepare to skip absolute value conversion
-D;JGE // Skip if already positive
-@ABS_R1 // Convert to absolute value
-M=-D // Negate negative number
-(SKIP_R1_ABS) // Absolute value conversion completed
+// Initialize
+@0
+D=A
+@R4
+M=D
 
-// Check for overflow
-@ABS_R0 // Load absolute value of dividend
+// Check R0
+@R0
 D=M
-@32768 // Load minimum negative number (-32768)
-D=D-A // Check if equal to -32768
-@CHECK_OVERFLOW // Prepare for overflow check
-D;JEQ // If -32768, check for overflow
-@START_DIVISION // Otherwise perform division normally
-0;JMP // Jump to start of division
+@X_POSITIVE // If the dividend ≥ 0, jump to X_POSITIVE
+D;JGE
 
-(CHECK_OVERFLOW) // Handle potential overflow
-@ABS_R1 // Load absolute value of divisor
+//dividend is negative
+@R7 // R7 stores the dividend sign flag
+M=-1 // -1 means the dividend is negative
+@CHECK_Y_SIGN // Jump to check the divisor sign
+0;JMP
+
+(X_POSITIVE) // If the dividend is non-negative
+@R7 // R7 stores the dividend sign flag
+M=1 // 1 means the dividend is positive
+
+(CHECK_Y_SIGN) // Check the sign of R1
+@R1
 D=M
-@1 // Check if the divisor is 1
-D=D-A
-@OVERFLOW_ERROR // Prepare for overflow error handling
-D;JEQ // If the divisor is 1, overflow occurs
-@START_DIVISION // Otherwise, perform division normally
-0;JMP // Jump to the start of division
+@Y_POSITIVE // If the divisor ≥ 0, jump to Y_POSITIVE
+D;JGE
 
+//negative divisor
+@R8 // R8 stores the divisor sign flag
+M=-1 // -1 means the divisor is negative
+@ABS_VALUES // Jump to absolute value calculation
+0;JMP
+
+(Y_POSITIVE) // In the case of a non-negative divisor
+@R8 // R8 stores the divisor sign flag
+M=1 // 1 means the divisor is positive
+
+(ABS_VALUES) // Calculate the absolute value part
+// Process the absolute value of the dividend
+@R0
+D=M
+@x_ABS // x_ABS stores the absolute value of the dividend
+M=D // Store the original value first
+
+@R7 // Check the sign of the dividend
+D=M
+@SKIP_NEGATE_X // If the dividend is positive (R7=1), skip negation
+D;JGT
+
+//dividend is negative
+@x_ABS
+D=M // Load the dividend value
+M=-D // Negate to get the absolute value
+
+(SKIP_NEGATE_X) // Skip negation of the dividend
+
+// Process the absolute value
+@R1
+D=M
+@y_ABS // y_ABS stores the absolute value of the divisor
+M=D // Store the original value first
+
+@R8 // Check the sign of the divisor
+D=M
+@SKIP_NEGATE_Y // If the divisor is positive (R8=1), skip negation
+D;JGT
+
+// If the divisor is negative
+@y_ABS
+D=M // Load the divisor value
+M=-D //absolute value
+
+
+// Skip negation of the divisor
+(SKIP_NEGATE_Y) 
+
+// Initialize quotient and remainder
+@0
+D=A
+@quotient // quotient initialized to 0
+M=D
+
+@x_ABS
+D=M
+@remainder // remainder initialized to the absolute value of the dividend
+M=D
 // Main division loop
-(START_DIVISION) // Start division algorithm
-@ABS_R0 // Load the absolute value of the dividend
+(DIVISION_LOOP) 
+// Check if remainder is less than divisor
+@remainder
 D=M
-@R3 // Initialize the remainder
-M=D // Initial remainder = dividend
-@R2 // Initialize the quotient
-M=0 // Initial quotient = 0
+@y_ABS
+D=D-M // Calculate remainder-divisor
+@END_DIVISION // If remainder < divisor, end loop
+D;JLT
 
-(LOOP) // Division loop
-@ABS_R1 // Load the absolute value of the divisor
+// Perform a subtraction
+@y_ABS
 D=M
-@R3 // Load the current remainder
-D=M-D // Remainder - divisor
-@END_LOOP // Prepare to exit the loop
-D;JLT // If remainder < divisor, division is complete
-@ABS_R1 // Otherwise, subtract the divisor from the remainder
+@remainder
+M=M-D // Remainder = remainder - divisor
+
+// Add 1 to quotient
+@quotient
+M=M+1
+
+// Continue loop
+@DIVISION_LOOP
+0;JMP
+
+(END_DIVISION) // End division processing
+// Determine the sign of the quotient
+@R7 // Compare the signs of the dividend and divisor
+D=M
+@R8
+D=D-M // Calculate the sign difference
+@SAME_SIGN // If the signs are the same (D=0), skip the quotient
+D;JEQ
+
+// Different signs, negate the quotient
+@quotient
+D=M
+M=-D
+
+(SAME_SIGN) // Process the remainder sign
+// Check the dividend sign
+@R7
+D=M
+@ADJUST_REMAINDER // If the dividend is positive (R7=1), skip the remainder negation
+D;JGT
+
+// If the dividend is negative, negate the remainder
+@remainder
+D=M
+M=-D
+
+(ADJUST_REMAINDER) // Store the final result
+// Store the quotient in R2
+@quotient
+D=M
+@R2
+M=D
+
+// Store the remainder in R3
+@remainder
 D=M
 @R3
-M=M-D // Remainder = Remainder - Divisor
-@R2 // Add 1 to the quotient
-M=M+1 // Quotient = Quotient + 1
-@LOOP // Continue division loop
+M=D
+
+// Program ends
+@END
+0;JMP
+
+(INVALID_DIVISION) // Handle division by zero error
+// Set error flag
+@1
+D=A
+@R4
+M=D
+
+// Quotient and remainder set to 0
+@0
+D=A
+@R2
+M=D
+@R3
+M=D
+
+// Program ends
+@END
+0;JMP
+
+(END) // Program end label
+@END
 0;JMP
